@@ -119,6 +119,7 @@ const rotas = { inicio: telaInicio, bestiario: telaBestiario, combate: telaComba
 let historico = [];
 function ir(hash) { location.hash = hash; }
 function rotear() {
+  if (!$("#aviso").hidden && $("#aviso button")) $("#aviso").hidden = true;
   const h = location.hash.slice(1) || "inicio";
   const [base, ...resto] = h.split("-");
   const id = resto.join("-");
