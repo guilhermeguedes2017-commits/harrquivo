@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16121c">
+<meta name="description" content="Harrquivo — o arquivo de mesa do Mundo de Harr: bestiário, loja, combate e fichas, offline.">
+<title>Harrquivo</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topo">
+  <button class="voltar" id="btnVoltar" aria-label="Voltar" hidden>
+    <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+  </button>
+  <h1 id="titulo">Harrquivo</h1>
+  <span class="rede" id="rede" title="Conexão"></span>
+</header>
+
+<div class="aviso" id="aviso" hidden></div>
+
+<main id="app" tabindex="-1"></main>
+
+<nav class="abas" id="abas">
+  <a href="#inicio" data-aba="inicio"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></svg><span>Início</span></a>
+  <a href="#bestiario" data-aba="bestiario"><svg viewBox="0 0 24 24"><path d="M12 3c3 2 6 2 8 1-1 8-4 13-8 16-4-3-7-8-8-16 2 1 5 1 8-1z"/><circle cx="9.5" cy="10.5" r="1.2"/><circle cx="14.5" cy="10.5" r="1.2"/></svg><span>Bestiário</span></a>
+  <a href="#combate" data-aba="combate"><svg viewBox="0 0 24 24"><path d="M5 19l9-9M14 5l5 5-3 1-3-3 1-3zM4 15l5 5M3 21l3-3"/></svg><span>Combate</span></a>
+  <a href="#loja" data-aba="loja"><svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7L6 8zM9 8a3 3 0 016 0"/></svg><span>Loja</span></a>
+  <a href="#fichas" data-aba="fichas"><svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6zM9 10h6M9 14h6M9 18h4"/></svg><span>Fichas</span></a>
+</nav>
+
+<div class="dialogo" id="dialogo" hidden><div class="caixa" id="caixa"></div></div>
+
+<script src="app.js"></script>
+</body>
+</html>
