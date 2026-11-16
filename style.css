@@ -157,3 +157,12 @@ main{padding:16px 16px calc(96px + var(--seguro-baixo));max-width:760px;margin:0
 .tab{border-collapse:collapse;width:100%;margin:6px 0 12px;font-size:15px}
 .tab th,.tab td{border:1px solid var(--linha);padding:4px 6px;text-align:center}
 .tab th{color:var(--ouro);font-family:Cinzel,serif;font-size:12px}
+.comb.aliado{border-left:3px solid var(--azul)}
+.notas{margin:8px 0 0;padding-left:18px;font-size:14px;color:var(--suave)}
+.notas li{margin:2px 0}.notas b{color:var(--ouro2)}
+.recarga{margin-top:8px;font-size:13px;border-radius:10px;padding:5px 10px;border:1px solid var(--ouro);background:rgba(209,170,94,.12);color:var(--ouro2)}
+.recarga.usado{border-color:var(--linha);background:transparent;color:var(--fraco)}
+.relogio{display:flex;gap:6px;margin:12px 0 6px}
+.relogio .pip{flex:1;height:8px;border-radius:8px;background:var(--fundo2);border:1px solid var(--linha)}
+.relogio .pip.on{background:var(--ouro)}.relogio .pip.chega{border-color:var(--sangue)}.relogio .pip.chega.on{background:var(--sangue)}
+.toggles button:disabled{opacity:.4}

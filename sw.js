@@ -1,5 +1,5 @@
 /* Harrquivo service worker — mude VERSAO a cada publicação */
-const VERSAO = "2026.11.16-2";
+const VERSAO = "2026.11.16-3";
 const CACHE = "harrquivo-" + VERSAO;
 const IMG = "harrquivo-img";
 const ARQUIVOS = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest", "data/catalogo.json", "data/harr.enc.json",

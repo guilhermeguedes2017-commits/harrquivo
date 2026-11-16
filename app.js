@@ -21,7 +21,7 @@ const S = {
   filtro: store.get("filtro", { q: "", raca: "", fonte: "", cr: "", hab: "", ord: "nome" }),
   loja: store.get("loja", { aba: "Armas", q: "", ajuste: 0 }),
   cesta: store.get("cesta", []),
-  comb: store.get("comb", { rodada: 1, vez: 0, lista: [] }),
+  comb: store.get("comb", null),
   imgsCache: new Set(),
 };
 
@@ -61,6 +61,8 @@ async function carregar() {
   S.itens = [...S.cat.itens, ...S.cat.magicos];
   await abrirHarr(store.get("senha", null), true);
   montarMonstros();
+  if (!S.comb) S.comb = combVazio();
+  if (S.harr?.combates?.length && !store.get("cenario-auto", false) && !S.comb.lista.length) { carregarCenario(S.harr.combates[0]); store.set("cenario-auto", true); }
   try {
     const c = await caches.open("harrquivo-img");
     (await c.keys()).forEach(k => S.imgsCache.add(new URL(k.url).pathname.split("/").pop()));
@@ -323,8 +325,9 @@ function telaMonstro(m) {
 }
 
 /* ================= COMBATE ================= */
-const CONDICOES = ["Agarrado", "Amedrontado", "Atordoado", "Caído", "Cego", "Contido", "Enfeitiçado", "Envenenado", "Exaustão", "Incapacitado", "Inconsciente", "Invisível", "Paralisado", "Petrificado", "Surdo", "Concentrando", "Sangrando"];
+const CONDICOES = ["Agarrado", "Amedrontado", "Atordoado", "Caído", "Cego", "Contido", "Enfeitiçado", "Envenenado", "Exaustão", "Incapacitado", "Inconsciente", "Invisível", "Paralisado", "Petrificado", "Surdo", "Concentrando", "Escondido", "Dominado"];
 const d20 = () => 1 + Math.floor(Math.random() * 20);
+const htmlSeguro = s => esc(s).replace(/&lt;(\/?)(b|i)&gt;/g, "<$1$2>");
 function rolarDados(expr) {
   const m = String(expr || "").replace(/\s/g, "").match(/^(\d+)d(\d+)([+-]\d+)?$/);
   if (!m) return null;
@@ -332,23 +335,42 @@ function rolarDados(expr) {
   for (let i = 0; i < +m[1]; i++) t += 1 + Math.floor(Math.random() * +m[2]);
   return Math.max(1, t);
 }
+function combVazio() { return { titulo: "", rodada: 1, vez: 0, lista: [], reserva: [], multidao: null, covil: null, reforco: null, filtro: "todos" }; }
 function salvarComb() { store.set("comb", S.comb); }
+let uidN = 0;
+const novoUid = () => Date.now().toString(36) + (uidN++).toString(36) + Math.random().toString(36).slice(2, 5);
+function participante(m, nome, extra = {}) {
+  return Object.assign({ uid: novoUid(), ref: m?.id, nome, sub: "", lado: "inimigo", ini: null, mod: m?.ini ?? 0, pv: m?.pv ?? 10, pvmax: m?.pv ?? 10, temp: 0, ca: m?.ca, cond: [], notas: [], recarga: null, tipo: "monstro" }, extra);
+}
+function carregarCenario(cen) {
+  const c = combVazio();
+  c.titulo = cen.titulo; c.multidao = cen.multidao ?? null; c.reforco = cen.reforco || null; c.dicas = cen.dicas || null;
+  c.covil = cen.covil ? { acoes: cen.covil, ultima: null, rodadaUltima: null, fugiu: false, regra: cen.covilRegra || "" } : null;
+  const cria = (grupo, destino) => grupo.forEach(g => {
+    const m = S.porId.get(g.ref);
+    for (let i = 1; i <= g.qtd; i++) destino.push(participante(m, g.nome + (g.qtd > 1 ? ` ${i}` : ""), { sub: g.sub || "", lado: g.lado || "inimigo", ca: g.ca ?? m?.ca, pv: g.pv ?? m?.pv, pvmax: g.pv ?? m?.pv, mod: g.mod ?? m?.ini ?? 0, notas: g.notas || [], recarga: g.recarga ? { label: g.recarga, usado: false } : null }));
+  });
+  cria(cen.lista, c.lista); cria(cen.reserva || [], c.reserva);
+  S.comb = c; salvarComb();
+}
 function dialogoAdicionar(m) {
   dialogo(`<h3>${esc(m.nome)} no combate</h3>
     <label>Quantidade</label><input class="campo" id="dQtd" type="number" min="1" max="20" value="1">
+    <label>Lado</label><div class="segmentos"><button class="on" data-lado="inimigo">Inimigo</button><button data-lado="aliado">Aliado</button></div>
     <label>Pontos de Vida</label>
     <div class="segmentos"><button class="on" data-pv="media">Média (${m.pv ?? "?"})</button><button data-pv="rolar" ${m.pv_dados ? "" : "disabled"}>Rolar ${esc(m.pv_dados || "")}</button></div>
     <p class="ajuda">A iniciativa é rolada automaticamente (d20 ${sg(m.ini ?? 0)}). Dá pra editar depois.</p>
     <div class="linha-btns"><button class="btn cheio" id="dOk">Adicionar</button><button class="btn" data-fechar>Cancelar</button></div>`,
     (c, fechar) => {
-      let modo = "media";
+      let modo = "media", lado = "inimigo";
       c.querySelectorAll("[data-pv]").forEach(b => b.onclick = () => { modo = b.dataset.pv; c.querySelectorAll("[data-pv]").forEach(x => x.classList.toggle("on", x === b)); });
+      c.querySelectorAll("[data-lado]").forEach(b => b.onclick = () => { lado = b.dataset.lado; c.querySelectorAll("[data-lado]").forEach(x => x.classList.toggle("on", x === b)); });
       $("#dOk", c).onclick = () => {
         const n = Math.min(20, Math.max(1, +$("#dQtd", c).value || 1));
         const ja = S.comb.lista.filter(x => x.ref === m.id).length;
         for (let i = 0; i < n; i++) {
           const pv = modo === "rolar" ? (rolarDados(m.pv_dados) ?? m.pv) : (m.pv ?? 10);
-          S.comb.lista.push({ uid: Date.now().toString(36) + i, ref: m.id, nome: m.nome + (n > 1 || ja ? ` ${ja + i + 1}` : ""), ini: d20() + (m.ini ?? 0), mod: m.ini ?? 0, pv, pvmax: pv, ca: m.ca, cond: [], tipo: "monstro" });
+          S.comb.lista.push(participante(m, m.nome + (n > 1 || ja ? ` ${ja + i + 1}` : ""), { ini: d20() + (m.ini ?? 0), pv, pvmax: pv, lado, sub: `CR ${m.cr_txt ?? "?"}` }));
         }
         ordenarComb(); salvarComb(); fechar();
         avisar(`${n}× ${esc(m.nome)} no combate.`, "Abrir", () => { $("#aviso").hidden = true; ir("combate"); });
@@ -356,54 +378,106 @@ function dialogoAdicionar(m) {
     });
 }
 function ordenarComb() {
-  const atual = S.comb.lista[S.comb.vez]?.uid;
-  S.comb.lista.sort((a, b) => b.ini - a.ini || (b.mod ?? 0) - (a.mod ?? 0));
-  const i = S.comb.lista.findIndex(x => x.uid === atual);
-  S.comb.vez = i < 0 ? 0 : i;
+  const c = S.comb, atual = c.lista[c.vez]?.uid;
+  c.lista.sort((a, b) => (b.ini ?? -99) - (a.ini ?? -99) || (b.mod ?? 0) - (a.mod ?? 0));
+  const i = c.lista.findIndex(x => x.uid === atual);
+  c.vez = i < 0 ? 0 : i;
 }
 function telaCombate() {
   titulo("Combate");
   const c = S.comb;
+  c.reserva ||= []; c.filtro ||= "todos";
+  const cen = S.harr?.combates || [];
+  const visiveis = c.lista.filter(x => c.filtro === "todos" || (c.filtro === "aliados" ? x.lado !== "inimigo" : x.lado === "inimigo"));
+  const semIni = c.lista.filter(x => x.ini == null).length;
+  let relogio = "";
+  if (c.reforco) {
+    const pips = Array.from({ length: c.reforco.rodada }, (_, i) => `<span class="pip${i + 1 === c.reforco.rodada ? " chega" : ""}${c.rodada >= i + 1 ? " on" : ""}"></span>`).join("");
+    relogio = `<div class="relogio">${pips}</div><div class="ajuda">${htmlSeguro(c.dicas?.[Math.min(c.rodada, c.reforco.rodada)] || "")}</div>`;
+  }
+  let covil = "";
+  if (c.covil) {
+    const v = c.covil, escultor = c.lista.find(x => /escultor/i.test(x.nome));
+    const fugaOk = c.rodada >= 3 || (escultor && escultor.pv <= 26);
+    covil = `<div class="cartao"><div class="grupo" style="margin-top:0">Ações de covil · contagem 20</div>
+      <div class="toggles">${v.acoes.map(a => { const off = v.fugiu || v.rodadaUltima === c.rodada || (v.ultima === a.k && v.rodadaUltima === c.rodada - 1) || (a.fuga && !fugaOk) || (a.coro && (c.multidao ?? 0) < 6); return `<button data-covil="${a.k}" ${off ? "disabled" : ""} title="${esc(a.d)}">${esc(a.n)}</button>`; }).join("")}</div>
+      <div class="ajuda" style="margin-top:6px">${v.fugiu ? "O Escultor fugiu: sem mais ações de covil." : v.rodadaUltima === c.rodada ? "Ação de covil desta rodada já usada." : esc(v.regra) + (fugaOk ? "" : " A fuga libera na rodada 3 ou com ≤26 PV.")}</div></div>`;
+  }
   $("#app").innerHTML = `
-  <div class="cartao rodada"><div><small class="ajuda">Rodada</small><br><b>${c.rodada}</b></div>
-    <div class="linha-btns"><button class="btn" id="cAnt">◂</button><button class="btn cheio" id="cProx">Próximo turno ▸</button></div></div>
-  <div class="linha-btns" style="margin-bottom:12px">
+  ${c.titulo ? `<div class="grupo" style="margin-top:0">${esc(c.titulo)}</div>` : ""}
+  <div class="cartao"><div class="rodada"><div><small class="ajuda">Rodada</small><br><b>${c.rodada}</b></div>
+    <div class="linha-btns"><button class="btn" id="cAnt">◂</button><button class="btn cheio" id="cProx">Próximo turno ▸</button></div></div>${relogio}</div>
+  ${covil}
+  ${c.multidao != null ? `<div class="cartao rodada"><div><b style="font-size:16px">Multidão rezando</b><br><small class="ajuda">Aldeões · 4 PV · CA 10 · cada acerto derruba um (dá pra nocautear em vez de matar)</small></div>
+    <div class="linha-btns" style="align-items:center"><button class="btn peq" data-mult="-1">−1</button><b style="font-size:22px;min-width:30px;text-align:center">${c.multidao}</b><button class="btn peq" data-mult="1">+1</button></div></div>
+    <div class="ajuda" style="margin:-8px 2px 12px">${c.multidao >= 6 ? "✅ Coro de Louvor disponível (6+ rezando)" : "⛔ Coro interrompido (menos de 6 rezando)"}</div>` : ""}
+  <div class="linha-btns" style="margin-bottom:10px">
+    ${semIni ? `<button class="btn peq cheio" id="cRolar">🎲 Rolar iniciativa (${semIni})</button>` : ""}
     <button class="btn peq" id="cJog">+ Jogador / NPC</button><a class="btn peq" href="#bestiario">+ Monstro</a>
+    ${cen.length ? `<button class="btn peq" id="cCen">Cenários do Notion</button>` : ""}
     <button class="btn peq perigo" id="cLimpar">Encerrar luta</button></div>
-  <div id="cLista">${c.lista.length ? "" : `<div class="vazio">Adicione monstros pelo Bestiário (botão “Pôr no combate”) e os jogadores aqui.</div>`}</div>
-  ${c.lista.length ? `<div class="ajuda" style="margin-top:8px">XP dos monstros derrotados: <b>${xpDerrotados().toLocaleString("pt-BR")}</b></div>` : ""}`;
+  ${c.lista.length ? `<div class="segmentos">${[["todos", "Todos"], ["aliados", "Aliados"], ["inimigos", "Inimigos"]].map(([k, t]) => `<button class="${c.filtro === k ? "on" : ""}" data-filtro="${k}">${t}</button>`).join("")}</div>` : ""}
+  <div id="cLista">${c.lista.length ? "" : `<div class="vazio">Adicione monstros pelo Bestiário (botão “Pôr no combate”), jogadores aqui${cen.length ? " ou carregue um cenário do Notion" : ""}.</div>`}</div>
+  ${c.reserva.length ? `<div class="cartao"><div class="grupo" style="margin-top:0">Reforços${c.reforco ? ` · entram na rodada ${c.reforco.rodada}` : ""}</div>
+    <div class="toggles">${c.reserva.map((x, i) => `<button data-res="${i}">+ ${esc(x.nome)}</button>`).join("")}</div>
+    ${c.reforco && c.reserva.length > 1 ? `<button class="btn cheio peq" id="cTodos" style="margin-top:10px">${esc(c.reforco.texto || "Todos entram")} (iniciativa ${c.reforco.ini})</button>` : ""}</div>` : ""}
+  ${c.lista.length ? `<div class="ajuda" style="margin-top:8px">XP dos inimigos derrotados: <b>${xpDerrotados().toLocaleString("pt-BR")}</b></div>` : ""}`;
   const L = $("#cLista");
-  c.lista.forEach((x, i) => {
+  visiveis.forEach(x => {
+    const i = c.lista.indexOf(x);
     const pct = x.pvmax ? Math.max(0, x.pv / x.pvmax * 100) : 100;
     const el = document.createElement("div");
-    el.className = "comb" + (i === c.vez ? " vez" : "") + (x.tipo === "monstro" && x.pv <= 0 ? " caido" : "");
+    el.className = "comb" + (i === c.vez ? " vez" : "") + (x.tipo === "monstro" && x.pv <= 0 ? " caido" : "") + (x.lado === "aliado" ? " aliado" : "");
     el.innerHTML = `<div class="cab">
-        <button class="ini" data-a="ini" title="Editar iniciativa">${x.ini}</button>
-        <div class="nm"><b>${esc(x.nome)}</b><small>${x.tipo === "monstro" ? `CA ${x.ca ?? "?"} · PV ${x.pv}/${x.pvmax}` : "Jogador / NPC"}</small></div>
+        <button class="ini" data-a="ini" title="Editar iniciativa">${x.ini ?? "—"}</button>
+        <div class="nm"><b>${esc(x.nome)}</b><small>${x.tipo === "monstro" ? `${x.lado === "aliado" ? "Aliado" : "Inimigo"}${x.sub ? " · " + esc(x.sub) : ""} · CA ${x.ca ?? "?"} · PV ${x.pv}/${x.pvmax}${x.temp ? ` (+${x.temp} temp.)` : ""}` : "Jogador / NPC"}</small></div>
         ${x.ref ? `<a class="btn peq" href="#m-${x.ref}">Ficha</a>` : ""}
-        <button class="btn peq" data-a="cond">Cond.</button>
         <button class="estrela" data-a="rem" aria-label="Remover">✕</button></div>
       ${x.tipo === "monstro" ? `<div class="barra"><i class="${pct < 34 ? "baixo" : pct < 67 ? "meio" : ""}" style="width:${pct}%"></i></div>
-      <div class="ctrl"><input type="number" inputmode="numeric" placeholder="valor"><button class="btn peq perigo" data-a="dano">Dano</button><button class="btn peq" data-a="cura">Cura</button></div>` : ""}
+      <div class="ctrl"><input type="number" inputmode="numeric" placeholder="valor"><button class="btn peq perigo" data-a="dano">Dano</button><button class="btn peq" data-a="cura">Cura</button><button class="btn peq" data-a="temp">Temp.</button><button class="btn peq" data-a="cond">Cond.</button></div>` : `<div class="ctrl"><button class="btn peq" data-a="cond">Condições</button></div>`}
+      ${x.notas?.length ? `<ul class="notas">${x.notas.map(n => `<li>${htmlSeguro(n)}</li>`).join("")}</ul>` : ""}
+      ${x.recarga ? `<button class="recarga ${x.recarga.usado ? "usado" : ""}" data-a="rec">${x.recarga.usado ? "⟳ Usado: " : "⚡ Pronto: "}${esc(x.recarga.label)}</button>` : ""}
       ${x.cond.length ? `<div class="conds">${x.cond.map(k => `<span>${esc(k)}</span>`).join("")}</div>` : ""}`;
     el.onclick = e => {
       const a = e.target.closest("[data-a]")?.dataset.a;
       if (!a) return;
       const v = Math.abs(parseInt($("input", el)?.value || "0", 10)) || 0;
-      if (a === "dano") x.pv = Math.max(x.tipo === "monstro" ? 0 : -999, x.pv - v);
+      if (a === "dano") { let d = v; if (x.temp) { const u = Math.min(x.temp, d); x.temp -= u; d -= u; } x.pv = Math.max(0, x.pv - d); }
       if (a === "cura") x.pv = Math.min(x.pvmax, x.pv + v);
+      if (a === "temp") x.temp = Math.max(x.temp || 0, v);
+      if (a === "rec") x.recarga.usado = !x.recarga.usado;
       if (a === "rem") { c.lista.splice(i, 1); if (c.vez >= c.lista.length) c.vez = 0; }
-      if (a === "ini") return dialogoNumero("Iniciativa de " + x.nome, x.ini, n => { x.ini = n; ordenarComb(); salvarComb(); telaCombate(); });
+      if (a === "ini") return dialogoNumero("Iniciativa de " + x.nome, x.ini ?? "", n => { x.ini = n; ordenarComb(); salvarComb(); telaCombate(); });
       if (a === "cond") return dialogoCondicoes(x);
       salvarComb(); telaCombate();
     };
     L.appendChild(el);
   });
-  $("#cProx").onclick = () => { if (!c.lista.length) return; c.vez++; if (c.vez >= c.lista.length) { c.vez = 0; c.rodada++; } salvarComb(); telaCombate(); };
-  $("#cAnt").onclick = () => { if (!c.lista.length) return; c.vez--; if (c.vez < 0) { c.vez = c.lista.length - 1; c.rodada = Math.max(1, c.rodada - 1); } salvarComb(); telaCombate(); };
+  const passo = d => { if (!c.lista.length) return; c.vez += d; if (c.vez >= c.lista.length) { c.vez = 0; c.rodada++; } if (c.vez < 0) { c.vez = c.lista.length - 1; c.rodada = Math.max(1, c.rodada - 1); } salvarComb(); telaCombate(); };
+  $("#cProx").onclick = () => passo(1); $("#cAnt").onclick = () => passo(-1);
+  document.querySelectorAll("[data-filtro]").forEach(b => b.onclick = () => { c.filtro = b.dataset.filtro; salvarComb(); telaCombate(); });
+  document.querySelectorAll("[data-mult]").forEach(b => b.onclick = () => { c.multidao = Math.max(0, c.multidao + +b.dataset.mult); salvarComb(); telaCombate(); });
+  document.querySelectorAll("[data-covil]").forEach(b => b.onclick = () => {
+    const a = c.covil.acoes.find(z => z.k === b.dataset.covil);
+    dialogo(`<h3>${esc(a.n)}</h3><p>${esc(a.d)}</p><div class="linha-btns"><button class="btn cheio" id="ok">Usar nesta rodada</button><button class="btn" data-fechar>Voltar</button></div>`,
+      (cx, f) => $("#ok", cx).onclick = () => { c.covil.ultima = a.k; c.covil.rodadaUltima = c.rodada; const e = c.lista.find(z => /escultor/i.test(z.nome)); if (a.coro && e) e.temp = Math.max(e.temp || 0, 10); if (a.fuga) { c.covil.fugiu = true; if (e && !e.cond.includes("Escondido")) e.cond.push("Escondido"); } salvarComb(); f(); telaCombate(); });
+  });
+  document.querySelectorAll("[data-res]").forEach(b => b.onclick = () => {
+    const x = c.reserva.splice(+b.dataset.res, 1)[0]; x.ini = c.reforco?.ini ?? (d20() + (x.mod || 0)); c.lista.push(x); ordenarComb(); salvarComb(); telaCombate();
+  });
+  if ($("#cTodos")) $("#cTodos").onclick = () => { c.reserva.forEach(x => { x.ini = c.reforco.ini; c.lista.push(x); }); c.reserva = []; ordenarComb(); salvarComb(); telaCombate(); };
+  if ($("#cRolar")) $("#cRolar").onclick = () => {
+    const grupos = {};
+    c.lista.filter(x => x.ini == null && x.tipo === "monstro").forEach(x => { const k = x.ref || x.nome; grupos[k] ??= d20() + (x.mod || 0); x.ini = grupos[k]; });
+    ordenarComb(); salvarComb(); telaCombate();
+    avisar("Iniciativa rolada (criaturas iguais agem juntas). Jogadores: toque no “—” pra digitar.");
+  };
+  if ($("#cCen")) $("#cCen").onclick = () => dialogo(`<h3>Cenários do Notion</h3>${cen.map((s, i) => `<div class="item" style="cursor:pointer" data-cen="${i}"><span class="txt"><span class="nome">${esc(s.titulo)}</span><span class="sub">${esc(s.resumo || "")}</span></span></div>`).join("")}
+      <p class="ajuda">Carregar um cenário substitui a luta atual.</p><button class="btn" data-fechar>Fechar</button>`,
+    (cx, f) => cx.querySelectorAll("[data-cen]").forEach(el => el.onclick = () => { carregarCenario(cen[+el.dataset.cen]); f(); telaCombate(); avisar("Cenário carregado. Toque em “Rolar iniciativa”."); }));
   $("#cLimpar").onclick = () => dialogo(`<h3>Encerrar a luta?</h3><p class="ajuda">Remove todos os participantes e zera a rodada.${c.lista.length ? ` XP dos derrotados: <b>${xpDerrotados().toLocaleString("pt-BR")}</b>.` : ""}</p>
       <div class="linha-btns"><button class="btn perigo" id="ok">Encerrar</button><button class="btn" data-fechar>Voltar</button></div>`,
-    (cx, f) => $("#ok", cx).onclick = () => { S.comb = { rodada: 1, vez: 0, lista: [] }; salvarComb(); f(); telaCombate(); });
+    (cx, f) => $("#ok", cx).onclick = () => { S.comb = combVazio(); salvarComb(); f(); telaCombate(); });
   $("#cJog").onclick = () => dialogo(`<h3>Jogador ou NPC</h3>
       <label>Nome</label><input class="campo" id="jN" placeholder="Ex.: Thalion">
       <label>Iniciativa (resultado já rolado)</label><input class="campo" id="jI" type="number" inputmode="numeric">
@@ -413,16 +487,17 @@ function telaCombate() {
       cx.querySelectorAll("[data-p]").forEach(b => b.onclick = () => { $("#jN", cx).value = b.dataset.p; $("#jI", cx).focus(); });
       $("#jOk", cx).onclick = () => {
         const nome = $("#jN", cx).value.trim(); if (!nome) return;
-        c.lista.push({ uid: Date.now().toString(36), nome, ini: parseInt($("#jI", cx).value || "0", 10), mod: 0, cond: [], tipo: "jogador" });
+        const v = $("#jI", cx).value;
+        c.lista.push({ uid: novoUid(), nome, ini: v === "" ? null : parseInt(v, 10), mod: 0, cond: [], tipo: "jogador", lado: "jogador" });
         ordenarComb(); salvarComb(); f(); telaCombate();
       };
     });
 }
-function xpDerrotados() { return S.comb.lista.filter(x => x.tipo === "monstro" && x.pv <= 0).reduce((t, x) => t + (S.porId.get(x.ref)?.xp || 0), 0); }
+function xpDerrotados() { return S.comb.lista.filter(x => x.tipo === "monstro" && x.lado !== "aliado" && x.pv <= 0).reduce((t, x) => t + (S.porId.get(x.ref)?.xp || 0), 0); }
 function dialogoNumero(tit, v, ok) {
   dialogo(`<h3>${esc(tit)}</h3><input class="campo" id="n" type="number" inputmode="numeric" value="${v}">
     <div class="linha-btns" style="margin-top:12px"><button class="btn cheio" id="ok">Salvar</button><button class="btn" data-fechar>Cancelar</button></div>`,
-    (c, f) => { $("#n", c).select(); $("#ok", c).onclick = () => { ok(parseInt($("#n", c).value || "0", 10)); f(); }; });
+    (c, f) => { $("#n", c).select(); $("#ok", c).onclick = () => { const s = $("#n", c).value; ok(s === "" ? null : parseInt(s, 10)); f(); }; });
 }
 function dialogoCondicoes(x) {
   dialogo(`<h3>Condições · ${esc(x.nome)}</h3><div class="toggles">${CONDICOES.map(k => `<button class="${x.cond.includes(k) ? "on" : ""}" data-k="${k}">${k}</button>`).join("")}</div>
@@ -523,9 +598,14 @@ function telaFichas() {
       <p class="ajuda">As fichas dos personagens e os monstros da campanha ficam protegidos por senha, pra ninguém dar spoiler. Digite a senha uma vez neste aparelho.</p>
       <input class="campo" id="sh" type="password" placeholder="Senha" autocomplete="current-password">
       <div class="linha-btns" style="justify-content:center;margin-top:12px"><button class="btn cheio" id="shOk">Desbloquear</button></div></div>`;
+    $("#sh").onkeydown = e => { if (e.key === "Enter") $("#shOk").click(); };
     $("#shOk").onclick = async () => {
       const ok = await abrirHarr($("#sh").value.trim());
-      if (ok) { montarMonstros(); avisar("Conteúdo de Harr desbloqueado."); telaFichas(); }
+      if (ok) {
+        montarMonstros();
+        if (S.harr?.combates?.length && !store.get("cenario-auto", false) && !S.comb.lista.length) { carregarCenario(S.harr.combates[0]); store.set("cenario-auto", true); }
+        avisar("Conteúdo de Harr desbloqueado."); telaFichas();
+      }
       else avisar(navigator.onLine || (await caches.match("data/harr.enc.json")) ? "Senha incorreta." : "Abra o app com internet uma vez para baixar o conteúdo.");
     };
     return;
