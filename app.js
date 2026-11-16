@@ -126,6 +126,7 @@ function rotear() {
   const [base, ...resto] = h.split("-");
   const id = resto.join("-");
   const app = $("#app");
+  app.classList.remove("largo");
   $("#btnVoltar").hidden = true;
   let aba = base;
   if (base === "m" && S.porId.has(id)) { telaMonstro(S.porId.get(id)); aba = "bestiario"; $("#btnVoltar").hidden = false; }
@@ -386,7 +387,8 @@ function ordenarComb() {
 function telaCombate() {
   titulo("Combate");
   const c = S.comb;
-  c.reserva ||= []; c.filtro ||= "todos";
+  c.reserva ||= []; c.filtro ||= "todos"; c.vista ||= "arena";
+  $("#app").classList.add("largo");
   const cen = S.harr?.combates || [];
   const visiveis = c.lista.filter(x => c.filtro === "todos" || (c.filtro === "aliados" ? x.lado !== "inimigo" : x.lado === "inimigo"));
   const semIni = c.lista.filter(x => x.ini == null).length;
@@ -405,8 +407,8 @@ function telaCombate() {
   }
   $("#app").innerHTML = `
   ${c.titulo ? `<div class="grupo" style="margin-top:0">${esc(c.titulo)}</div>` : ""}
-  <div class="cartao"><div class="rodada"><div><small class="ajuda">Rodada</small><br><b>${c.rodada}</b></div>
-    <div class="linha-btns"><button class="btn" id="cAnt">◂</button><button class="btn cheio" id="cProx">Próximo turno ▸</button></div></div>${relogio}</div>
+  <div class="cartao turno"><div class="rodada"><div class="vezde"><small>Rodada <b>${c.rodada}</b></small><span>${c.lista[c.vez] ? (c.lista[c.vez].ini == null ? "Role a iniciativa" : "Vez de <b>" + esc(c.lista[c.vez].nome) + "</b>") : "Sem participantes"}</span></div>
+    <div class="linha-btns"><button class="btn" id="cAnt" aria-label="Turno anterior">◂</button><button class="btn cheio" id="cProx">Próximo ▸</button></div></div>${relogio}</div>
   ${covil}
   ${c.multidao != null ? `<div class="cartao rodada"><div><b style="font-size:16px">Multidão rezando</b><br><small class="ajuda">Aldeões · 4 PV · CA 10 · cada acerto derruba um (dá pra nocautear em vez de matar)</small></div>
     <div class="linha-btns" style="align-items:center"><button class="btn peq" data-mult="-1">−1</button><b style="font-size:22px;min-width:30px;text-align:center">${c.multidao}</b><button class="btn peq" data-mult="1">+1</button></div></div>
@@ -416,14 +418,19 @@ function telaCombate() {
     <button class="btn peq" id="cJog">+ Jogador / NPC</button><a class="btn peq" href="#bestiario">+ Monstro</a>
     ${cen.length ? `<button class="btn peq" id="cCen">Cenários do Notion</button>` : ""}
     <button class="btn peq perigo" id="cLimpar">Encerrar luta</button></div>
-  ${c.lista.length ? `<div class="segmentos">${[["todos", "Todos"], ["aliados", "Aliados"], ["inimigos", "Inimigos"]].map(([k, t]) => `<button class="${c.filtro === k ? "on" : ""}" data-filtro="${k}">${t}</button>`).join("")}</div>` : ""}
+  ${c.lista.length ? `<div class="segmentos">${[["arena", "⚔ Arena"], ["lista", "☰ Lista"]].map(([k, t]) => `<button class="${c.vista === k ? "on" : ""}" data-vista="${k}">${t}</button>`).join("")}</div>` : ""}
+  ${c.lista.length && c.vista === "lista" ? `<div class="segmentos">${[["todos", "Todos"], ["aliados", "Aliados"], ["inimigos", "Inimigos"]].map(([k, t]) => `<button class="${c.filtro === k ? "on" : ""}" data-filtro="${k}">${t}</button>`).join("")}</div>` : ""}
   <div id="cLista">${c.lista.length ? "" : `<div class="vazio">Adicione monstros pelo Bestiário (botão “Pôr no combate”), jogadores aqui${cen.length ? " ou carregue um cenário do Notion" : ""}.</div>`}</div>
   ${c.reserva.length ? `<div class="cartao"><div class="grupo" style="margin-top:0">Reforços${c.reforco ? ` · entram na rodada ${c.reforco.rodada}` : ""}</div>
     <div class="toggles">${c.reserva.map((x, i) => `<button data-res="${i}">+ ${esc(x.nome)}</button>`).join("")}</div>
     ${c.reforco && c.reserva.length > 1 ? `<button class="btn cheio peq" id="cTodos" style="margin-top:10px">${esc(c.reforco.texto || "Todos entram")} (iniciativa ${c.reforco.ini})</button>` : ""}</div>` : ""}
   ${c.lista.length ? `<div class="ajuda" style="margin-top:8px">XP dos inimigos derrotados: <b>${xpDerrotados().toLocaleString("pt-BR")}</b></div>` : ""}`;
   const L = $("#cLista");
-  visiveis.forEach(x => {
+  if (c.vista === "arena" && c.lista.length) {
+    L.innerHTML = arenaHTML();
+    L.querySelectorAll("[data-tok]").forEach(b => b.onclick = () => fichaToken(b.dataset.tok));
+  }
+  (c.vista === "arena" ? [] : visiveis).forEach(x => {
     const i = c.lista.indexOf(x);
     const pct = x.pvmax ? Math.max(0, x.pv / x.pvmax * 100) : 100;
     const el = document.createElement("div");
@@ -455,6 +462,7 @@ function telaCombate() {
   });
   const passo = d => { if (!c.lista.length) return; c.vez += d; if (c.vez >= c.lista.length) { c.vez = 0; c.rodada++; } if (c.vez < 0) { c.vez = c.lista.length - 1; c.rodada = Math.max(1, c.rodada - 1); } salvarComb(); telaCombate(); };
   $("#cProx").onclick = () => passo(1); $("#cAnt").onclick = () => passo(-1);
+  document.querySelectorAll("[data-vista]").forEach(b => b.onclick = () => { c.vista = b.dataset.vista; salvarComb(); telaCombate(); });
   document.querySelectorAll("[data-filtro]").forEach(b => b.onclick = () => { c.filtro = b.dataset.filtro; salvarComb(); telaCombate(); });
   document.querySelectorAll("[data-mult]").forEach(b => b.onclick = () => { c.multidao = Math.max(0, c.multidao + +b.dataset.mult); salvarComb(); telaCombate(); });
   document.querySelectorAll("[data-covil]").forEach(b => b.onclick = () => {
@@ -491,6 +499,81 @@ function telaCombate() {
         c.lista.push({ uid: novoUid(), nome, ini: v === "" ? null : parseInt(v, 10), mod: 0, cond: [], tipo: "jogador", lado: "jogador" });
         ordenarComb(); salvarComb(); f(); telaCombate();
       };
+    });
+}
+const PALAVRAS_MENORES = new Set(["da", "de", "do", "das", "dos", "e", "o", "a", "pelas", "pelos"]);
+function monograma(nome) {
+  const num = (nome.match(/\s(\d+)$/) || [])[1] || "";
+  const ps = nome.replace(/\s\d+$/, "").replace(/[(),]/g, " ").split(/\s+/).filter(w => w && !PALAVRAS_MENORES.has(w.toLowerCase()));
+  return (ps.slice(0, ps.length > 1 && num ? 2 : 2).map(w => w[0]).join("").toUpperCase() || "?") + num;
+}
+function tokenHTML(x) {
+  const c = S.comb, m = x.ref ? S.porId.get(x.ref) : null;
+  const lado = x.lado === "inimigo" ? "inimigo" : "aliado";
+  const mon = x.tipo === "monstro", morto = mon && x.pv <= 0;
+  const pct = mon && x.pvmax ? Math.max(0, x.pv / x.pvmax * 100) : 100;
+  const foto = m?.img && (navigator.onLine || S.imgsCache.has(imgArquivo(m))) ? `<img src="${esc(m.img)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+  return `<button class="tok ${lado}${c.lista[c.vez]?.uid === x.uid ? " vez" : ""}${morto ? " morto" : ""}" data-tok="${x.uid}" aria-label="${esc(x.nome)}">
+    <span class="disco"><span class="mono">${esc(monograma(x.nome))}</span>${foto}${morto ? '<span class="caveira">✝</span>' : ""}</span>
+    <span class="b-ini">${x.ini ?? "—"}</span>
+    ${mon ? `<span class="b-ca" title="CA">${x.ca ?? "?"}</span><span class="b-pv${pct < 34 ? " baixo" : ""}${x.temp ? " temp" : ""}">${x.pv + (x.temp || 0)}</span>` : ""}
+    ${x.tipo === "jogador" ? '<span class="tag">PJ</span>' : lado === "aliado" ? '<span class="tag">NPC</span>' : ""}
+    ${x.recarga && !x.recarga.usado ? '<span class="b-rec">⚡</span>' : ""}
+    <span class="nm">${esc(x.nome)}</span>
+    ${mon ? `<span class="hp"><i class="${pct < 34 ? "baixo" : pct < 67 ? "meio" : ""}" style="width:${pct}%"></i></span>` : ""}
+    ${x.cond.length ? `<span class="cnd">${x.cond.map(k => esc(k)).join(" · ")}</span>` : ""}
+  </button>`;
+}
+function arenaHTML() {
+  const c = S.comb;
+  const aliados = c.lista.filter(x => x.lado !== "inimigo"), inimigos = c.lista.filter(x => x.lado === "inimigo");
+  const vivos = inimigos.filter(x => x.pv > 0).length;
+  const ordem = c.lista.map((x, i) => `<button class="ord ${x.lado === "inimigo" ? "inimigo" : "aliado"}${i === c.vez ? " vez" : ""}${x.tipo === "monstro" && x.pv <= 0 ? " morto" : ""}" data-tok="${x.uid}">
+      <b>${x.ini ?? "—"}</b><span>${esc(monograma(x.nome))}</span><em>${esc(x.nome)}</em></button>`).join("");
+  const peso = n => Math.min(8, Math.max(1, Math.ceil(n / 2)));
+  return `<div class="arena" style="grid-template-columns:minmax(76px,${peso(aliados.length)}fr) var(--col-ordem) minmax(76px,${peso(inimigos.length)}fr)">
+    <section class="lado-a"><h4>Grupo <small>${aliados.length}</small></h4><div class="tokens">${aliados.map(tokenHTML).join("") || '<p class="ajuda">Adicione jogadores e aliados.</p>'}</div></section>
+    <section class="ordem"><h4>Ordem</h4>${ordem}</section>
+    <section class="lado-i"><h4>Inimigos <small>${vivos}/${inimigos.length}</small></h4><div class="tokens">${inimigos.map(tokenHTML).join("") || '<p class="ajuda">Nenhum inimigo.</p>'}</div></section>
+  </div>`;
+}
+function fichaToken(uid) {
+  const c = S.comb, x = c.lista.find(z => z.uid === uid);
+  if (!x) return;
+  const mon = x.tipo === "monstro";
+  const pct = mon && x.pvmax ? Math.max(0, x.pv / x.pvmax * 100) : 100;
+  const pronto = () => { salvarComb(); telaCombate(); fichaToken(uid); };
+  dialogo(`<div class="tk-cab"><span class="tok ${x.lado === "inimigo" ? "inimigo" : "aliado"} mini"><span class="disco"><span class="mono">${esc(monograma(x.nome))}</span></span></span>
+      <div><h3 style="margin:0">${esc(x.nome)}</h3><small class="ajuda">${x.tipo === "jogador" ? "Jogador / NPC" : (x.lado === "inimigo" ? "Inimigo" : "Aliado") + (x.sub ? " · " + esc(x.sub) : "")}</small></div></div>
+    <div class="chave tk-chave">
+      <div><small>INICIATIVA</small><b>${x.ini ?? "—"}</b><button class="lnk" id="tIni">editar</button></div>
+      ${mon ? `<div><small>CA</small><b>${x.ca ?? "?"}</b><i>&nbsp;</i></div>
+      <div><small>PV</small><b>${x.pv}<span style="font-size:14px;color:var(--fraco)">/${x.pvmax}</span></b><i>${x.temp ? `+${x.temp} temp.` : "&nbsp;"}</i></div>` : ""}
+    </div>
+    ${mon ? `<div class="barra"><i class="${pct < 34 ? "baixo" : pct < 67 ? "meio" : ""}" style="width:${pct}%"></i></div>
+    <div class="ctrl tk-ctrl"><input id="tV" type="number" inputmode="numeric" placeholder="valor"><button class="btn peq perigo" data-t="dano">Dano</button><button class="btn peq" data-t="cura">Cura</button><button class="btn peq" data-t="temp">Temp.</button></div>` : ""}
+    ${x.recarga ? `<button class="recarga ${x.recarga.usado ? "usado" : ""}" data-t="rec">${x.recarga.usado ? "⟳ Usado: " : "⚡ Pronto: "}${esc(x.recarga.label)}</button>` : ""}
+    ${x.notas?.length ? `<ul class="notas">${x.notas.map(n => `<li>${htmlSeguro(n)}</li>`).join("")}</ul>` : ""}
+    <label>Condições</label><div class="toggles">${CONDICOES.map(k => `<button class="${x.cond.includes(k) ? "on" : ""}" data-k="${k}">${k}</button>`).join("")}</div>
+    <div class="linha-btns" style="margin-top:14px">
+      ${x.ref ? `<a class="btn peq" href="#m-${x.ref}" data-fechar>Ficha</a>` : ""}
+      ${x.tipo === "monstro" ? `<button class="btn peq" data-t="lado">Mudar p/ ${x.lado === "inimigo" ? "aliados" : "inimigos"}</button>` : ""}
+      <button class="btn peq perigo" data-t="rem">Remover</button>
+      <button class="btn peq cheio" data-fechar>Fechar</button></div>`,
+    (cx, f) => {
+      $("#tIni", cx).onclick = () => dialogoNumero("Iniciativa de " + x.nome, x.ini ?? "", n => { x.ini = n; ordenarComb(); pronto(); });
+      cx.querySelectorAll("[data-k]").forEach(b => b.onclick = () => { const k = b.dataset.k; x.cond = x.cond.includes(k) ? x.cond.filter(y => y !== k) : [...x.cond, k]; pronto(); });
+      cx.querySelectorAll("[data-t]").forEach(b => b.onclick = () => {
+        const a = b.dataset.t, v = Math.abs(parseInt($("#tV", cx)?.value || "0", 10)) || 0;
+        if (a === "dano") { let d = v; if (x.temp) { const u = Math.min(x.temp, d); x.temp -= u; d -= u; } x.pv = Math.max(0, x.pv - d); }
+        if (a === "cura") x.pv = Math.min(x.pvmax, x.pv + v);
+        if (a === "temp") x.temp = Math.max(x.temp || 0, v);
+        if (a === "rec") x.recarga.usado = !x.recarga.usado;
+        if (a === "lado") x.lado = x.lado === "inimigo" ? "aliado" : "inimigo";
+        if (a === "rem") { const i = c.lista.indexOf(x); c.lista.splice(i, 1); if (i < c.vez) c.vez--; if (c.vez >= c.lista.length) c.vez = 0; salvarComb(); f(); telaCombate(); return; }
+        if ((a === "dano" || a === "cura" || a === "temp") && !v) return $("#tV", cx).focus();
+        pronto();
+      });
     });
 }
 function xpDerrotados() { return S.comb.lista.filter(x => x.tipo === "monstro" && x.lado !== "aliado" && x.pv <= 0).reduce((t, x) => t + (S.porId.get(x.ref)?.xp || 0), 0); }
